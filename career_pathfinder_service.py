@@ -1,56 +1,55 @@
-from fastapi import FastAPI
+# career_pathfinder_service.py
+# (Ensure you have all the necessary libraries installed)
+
+import json
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict
 
+# --- Pydantic Models (Same as before) ---
 class StudentProfile(BaseModel):
-    """
-    This model defines the data we expect to receive about the student.
-    In a real application, this might be fetched from a user database.
-    """
     student_id: int
-    skills: List[str] = ["Python", "Data Analysis", "SQL"]
-    interests: str = "Interested in machine learning and cloud computing."
-    performance_summary: str = "Strong performance in programming courses, average in advanced mathematics."
+    skills: List[str]
+    interests: str
+    performance_summary: str
     
 class Job(BaseModel):
-    """Defines the structure of a job listing."""
     id: int
     title: str
     company: str
     required_skills: List[str]
 
 class Course(BaseModel):
-    """Defines the structure of a course on the BrainFog LMS."""
     id: int
     title: str
     skill_taught: str
 
 class CareerPathResponse(BaseModel):
-    """Defines the final, detailed response sent back to the user."""
     top_match: Job
     skill_gap: List[str]
     course_recommendations: Dict[str, List[Course]]
     summary: str
 
+# --- Load Data From File at Startup ---
+JOBS_FILE = "jobs.json"
+JOBS_DB = {} # This will be a dictionary for fast lookup by ID
+ALL_JOBS_LIST = [] # This will be a list for searching
 
+try:
+    with open(JOBS_FILE, 'r') as f:
+        ALL_JOBS_LIST = json.load(f)
+        # Create a dictionary for quick access by job ID
+        for job in ALL_JOBS_LIST:
+            # Adzuna IDs are large numbers, ensure they are stored correctly
+            JOBS_DB[int(job['id'])] = Job(**job) # Validate with Pydantic model
+    print(f"Successfully loaded {len(JOBS_DB)} jobs from '{JOBS_FILE}'.")
+except FileNotFoundError:
+    print(f"WARNING: '{JOBS_FILE}' not found. The API will not have job data.")
+    print("Please run the 'ingest_jobs.py' script first to create it.")
+except Exception as e:
+    print(f"An error occurred while loading {JOBS_FILE}: {e}")
 
-app = FastAPI(
-    title="BrainFog AI Career Pathfinder",
-    description="An API for matching students with career paths and providing skill gap analysis."
-)
-
-
-# --- Mock Database and External Services ---
-# In a real application, these functions would make network requests to your
-# databases (PostgreSQL, ChromaDB) and the NestJS Core LMS service.
-
-MOCK_JOBS_DB: Dict[int, Job] = {
-    101: Job(id=101, title="Data Scientist", company="InnovateAI", required_skills=["Python", "R", "SQL", "TensorFlow", "Scikit-learn"]),
-    102: Job(id=102, title="Cloud DevOps Engineer", company="CloudServe", required_skills=["AWS", "Docker", "Kubernetes", "Python", "CI/CD"]),
-    103: Job(id=103, title="Backend Developer", company="CodeFoundry", required_skills=["Python", "Django", "SQL", "REST APIs", "Docker"]),
-    104: Job(id=104, title="Machine Learning Engineer", company="AI Solutions", required_skills=["Python", "PyTorch", "SQL", "Data Analysis", "AWS"]),
-}
-
+# Mock courses database (this can still be mock for now)
 MOCK_COURSES_DB: List[Course] = [
     Course(id=201, title="Advanced Machine Learning with TensorFlow", skill_taught="TensorFlow"),
     Course(id=202, title="Introduction to AWS for Developers", skill_taught="AWS"),
@@ -58,63 +57,53 @@ MOCK_COURSES_DB: List[Course] = [
     Course(id=204, title="Web Development with Django", skill_taught="Django"),
 ]
 
+app = FastAPI(title="BrainFog AI Career Pathfinder")
+
+# --- Modified "Database" Functions ---
+
 def query_semantic_job_search(profile_text: str) -> List[int]:
     """
-    MOCK FUNCTION: Simulates a semantic search query.
-    
-    PRODUCTION: This function would use a sentence-transformer model to encode
-    the profile_text into a vector, then query a vector database (like ChromaDB)
-    to find the IDs of the most semantically similar job descriptions.
+    MODIFIED MOCK FUNCTION: Simulates semantic search against the loaded file data.
     """
-    print(f"--- Simulating semantic search for profile: '{profile_text[:50]}...' ---")
-    # Simple logic for the mock: find jobs with the most overlapping skills
-    # In reality, this would be a sophisticated vector similarity search.
-    if "machine learning" in profile_text or "data scientist" in profile_text:
-        return [104, 101, 103] # Return job IDs, best match first
-    if "cloud" in profile_text or "aws" in profile_text:
-        return [102, 104, 103]
-    return [103, 102, 101]
+    print(f"--- Simulating semantic search over {len(ALL_JOBS_LIST)} loaded jobs... ---")
+    # A simple keyword-based search for the prototype. A real implementation
+    # would use sentence-transformers on the 'description' field of each job.
+    search_terms = profile_text.lower().split()
+    scores = {}
+    for job in ALL_JOBS_LIST:
+        score = 0
+        for term in search_terms:
+            if term in job['description'].lower():
+                score += 1
+        if score > 0:
+            scores[int(job['id'])] = score
+    
+    # Sort by score, highest first
+    sorted_job_ids = sorted(scores, key=scores.get, reverse=True)
+    return sorted_job_ids[:10] # Return top 10 matches
 
-def fetch_job_details_from_db(job_ids: List[int]) -> List[Job]:
-    """
-    MOCK FUNCTION: Simulates fetching full job details from a primary database.
-    
-    PRODUCTION: This would execute a `SELECT * FROM jobs WHERE id IN (...)`
-    query against your PostgreSQL database.
-    """
-    print(f"--- Simulating fetching job details for IDs: {job_ids} from PostgreSQL ---")
-    return [MOCK_JOBS_DB[job_id] for job_id in job_ids if job_id in MOCK_JOBS_DB]
+def fetch_job_details_from_db(job_id: int) -> Job:
+    """Fetches job details from the in-memory dictionary."""
+    return JOBS_DB.get(job_id)
 
 def fetch_courses_for_skill(skill: str) -> List[Course]:
-    """
-    MOCK FUNCTION: Simulates calling the NestJS Core LMS API.
-    
-    PRODUCTION: This would make an HTTP GET request, e.g.,
-    `requests.get(f"http://lms-api/courses?skill={skill}")`
-    """
-    print(f"--- Simulating API call to NestJS to find courses for skill: '{skill}' ---")
+    """Finds courses from the mock course DB."""
     return [course for course in MOCK_COURSES_DB if course.skill_taught.lower() == skill.lower()]
 
+# --- API Endpoint (Logic is largely unchanged) ---
 
 @app.post("/match-careers", response_model=CareerPathResponse)
 async def match_careers(profile: StudentProfile):
-    """
-    This is the main endpoint. It takes a student's profile and returns a
-    detailed career path analysis.
-    """
-    profile_text = (
-        f"Skills: {', '.join(profile.skills)}. "
-        f"Interests: {profile.interests}. "
-        f"Performance Summary: {profile.performance_summary}"
-    )
+    if not JOBS_DB:
+        raise HTTPException(status_code=503, detail="Job data is not available. Please run the ingestion script.")
 
+    profile_text = f"{' '.join(profile.skills)} {profile.interests} {profile.performance_summary}"
     matching_job_ids = query_semantic_job_search(profile_text)
-
-    matching_jobs = fetch_job_details_from_db(matching_job_ids)
-    if not matching_jobs:
-        return {"error": "Could not find any matching careers at this time."}
     
-    top_match = matching_jobs[0]
+    if not matching_job_ids:
+        raise HTTPException(status_code=404, detail="Could not find any matching careers for this profile.")
+    
+    top_match = fetch_job_details_from_db(matching_job_ids[0])
 
     student_skills_set = set(skill.lower() for skill in profile.skills)
     required_skills_set = set(skill.lower() for skill in top_match.required_skills)
@@ -128,12 +117,10 @@ async def match_careers(profile: StudentProfile):
         if recommended_courses:
             course_recommendations[skill.capitalize()] = recommended_courses
 
-
     summary = (
-        f"Excellent progress! Based on your profile, you are a strong candidate for a role like '{top_match.title}'. "
+        f"Based on your profile, you are a strong candidate for a role like '{top_match.title}' at {top_match.company}. "
         f"Your skills in {', '.join(s.capitalize() for s in strong_skills)} are highly relevant. "
-        f"To become an even more competitive applicant, focus on developing these skills: {', '.join(s.capitalize() for s in missing_skills)}. "
-        f"You can start your journey right here on BrainFog with the recommended courses."
+        f"To be even more competitive, focus on developing these skills: {', '.join(s.capitalize() for s in missing_skills)}."
     )
 
     return CareerPathResponse(
@@ -142,7 +129,3 @@ async def match_careers(profile: StudentProfile):
         course_recommendations=course_recommendations,
         summary=summary
     )
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
