@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict
 
-# --- Pydantic Models (Same as before) ---
+
 class StudentProfile(BaseModel):
     student_id: int
     skills: List[str]
@@ -27,18 +27,16 @@ class CareerPathResponse(BaseModel):
     course_recommendations: Dict[str, List[Course]]
     summary: str
 
-# --- Load Data From File at Startup ---
+
 JOBS_FILE = "jobs.json"
-JOBS_DB = {} # This will be a dictionary for fast lookup by ID
-ALL_JOBS_LIST = [] # This will be a list for searching
+JOBS_DB = {} 
+ALL_JOBS_LIST = [] 
 
 try:
     with open(JOBS_FILE, 'r') as f:
         ALL_JOBS_LIST = json.load(f)
-        # Create a dictionary for quick access by job ID
         for job in ALL_JOBS_LIST:
-            # Adzuna IDs are large numbers, ensure they are stored correctly
-            JOBS_DB[int(job['id'])] = Job(**job) # Validate with Pydantic model
+            JOBS_DB[int(job['id'])] = Job(**job)
     print(f"Successfully loaded {len(JOBS_DB)} jobs from '{JOBS_FILE}'.")
 except FileNotFoundError:
     print(f"WARNING: '{JOBS_FILE}' not found. The API will not have job data.")
@@ -46,7 +44,7 @@ except FileNotFoundError:
 except Exception as e:
     print(f"An error occurred while loading {JOBS_FILE}: {e}")
 
-# Mock courses database (this can still be mock for now)
+# Mock courses database 
 MOCK_COURSES_DB: List[Course] = [
     Course(id=201, title="Advanced Machine Learning with TensorFlow", skill_taught="TensorFlow"),
     Course(id=202, title="Introduction to AWS for Developers", skill_taught="AWS"),
@@ -56,15 +54,12 @@ MOCK_COURSES_DB: List[Course] = [
 
 app = FastAPI(title="BrainFog AI Career Pathfinder")
 
-# --- Modified "Database" Functions ---
 
 def query_semantic_job_search(profile_text: str) -> List[int]:
     """
     MODIFIED MOCK FUNCTION: Simulates semantic search against the loaded file data.
     """
     print(f"--- Simulating semantic search over {len(ALL_JOBS_LIST)} loaded jobs... ---")
-    # A simple keyword-based search for the prototype. A real implementation
-    # would use sentence-transformers on the 'description' field of each job.
     search_terms = profile_text.lower().split()
     scores = {}
     for job in ALL_JOBS_LIST:
@@ -87,7 +82,6 @@ def fetch_courses_for_skill(skill: str) -> List[Course]:
     """Finds courses from the mock course DB."""
     return [course for course in MOCK_COURSES_DB if course.skill_taught.lower() == skill.lower()]
 
-# --- API Endpoint (Logic is largely unchanged) ---
 
 @app.post("/match-careers", response_model=CareerPathResponse)
 async def match_careers(profile: StudentProfile):
