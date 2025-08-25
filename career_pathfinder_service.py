@@ -1,6 +1,3 @@
-# career_pathfinder_service.py
-# (Ensure you have all the necessary libraries installed)
-
 import json
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
